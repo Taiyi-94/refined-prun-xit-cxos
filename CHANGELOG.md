@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.5
+
 ### Added
 
 - XIT Repair settings: Global repair settings are now managed in `XIT SET` Gameplay with Target age (default 60) and Red and Yellow thresholds (defaults 3 / 7). Also, a new countdown toggle: “on”, XIT BS and XIT DISPATCH repair cells count down to the planet target or the global target. “Off” still shows the age counting off.
