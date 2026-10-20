@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   closeOrUnhide,
+  companionTarget,
+  isCompanionHost,
   isNotificationCompanionClick,
   isNotificationMarkReadClick,
   newlyOpenedWindows,
@@ -70,6 +72,17 @@ describe('isNotificationCompanionClick', () => {
   });
 });
 
+describe('isCompanionHost', () => {
+  it('does not host a companion from a NOTS docked on a screen', () => {
+    expect(isCompanionHost(null)).toBe(false);
+    expect(isCompanionHost(undefined)).toBe(false);
+  });
+
+  it('hosts a companion from a floating NOTS window', () => {
+    expect(isCompanionHost({})).toBe(true);
+  });
+});
+
 describe('opened notification command', () => {
   it('does not adopt a missing or blank command', () => {
     expect(openedWindowCommand(undefined)).toBeUndefined();
@@ -92,6 +105,45 @@ describe('opened notification command', () => {
 
   it('adopts when the host can open a companion and the command is known', () => {
     expect(shouldAdoptOpenedWindowAsCompanion(true, 'SHPI AB-123')).toBe(true);
+  });
+});
+
+describe('companionTarget', () => {
+  const vote = 'COGCPD p-KW-688c pn-ADVERTISING_AGRICULTURE';
+
+  it('companions the click command instead of the game default the game opened', () => {
+    expect(companionTarget(true, 1, 'COGC KW-688c', vote)).toEqual({
+      action: 'companion',
+      command: vote,
+    });
+  });
+
+  it('companions the click command when the game only re-focused its default', () => {
+    expect(companionTarget(true, 0, undefined, vote)).toEqual({
+      action: 'companion',
+      command: vote,
+    });
+  });
+
+  it('keeps the game target visible when the host cannot split', () => {
+    expect(companionTarget(false, 1, undefined, vote)).toEqual({ action: 'unhide' });
+    expect(companionTarget(false, 0, undefined, vote)).toEqual({ action: 'leave' });
+  });
+
+  it('companions the game target when no click command is registered', () => {
+    expect(companionTarget(true, 1, 'SHPI AB-123', undefined)).toEqual({
+      action: 'companion',
+      command: 'SHPI AB-123',
+    });
+  });
+
+  it('leaves a re-focused game target alone when no click command is registered', () => {
+    expect(companionTarget(true, 0, undefined, undefined)).toEqual({ action: 'leave' });
+  });
+
+  it('keeps the game target visible when it cannot be adopted', () => {
+    expect(companionTarget(false, 1, 'SHPI AB-123', undefined)).toEqual({ action: 'unhide' });
+    expect(companionTarget(true, 1, undefined, undefined)).toEqual({ action: 'unhide' });
   });
 });
 
