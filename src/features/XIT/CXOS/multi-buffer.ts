@@ -8,13 +8,32 @@ import { $, _$$, _$ } from '@src/utils/select-dom';
 import { watchUntil } from '@src/utils/watch';
 import { showBuffer, setBufferSize } from '@src/infrastructure/prun-ui/buffers';
 import { exchangesStore } from '@src/infrastructure/prun-api/data/exchanges';
+import { userDataStore } from '@src/infrastructure/prun-api/data/user-data';
 
 let detailWindow: Element | undefined;
 const HORIZONTAL_SPLIT_CHAR = '–';
+const FILTER_TIMEOUT = 3000;
 
 // Localized strings may be missing until the game dictionary loads.
 function includesText(element: Element, text?: string) {
   return !!text && !!element.textContent?.toLowerCase().includes(text.toLowerCase());
+}
+
+// The native CXOS filters are a PRO feature, so they are only driven for PRO players.
+export function hasCxosFilters() {
+  return userDataStore.subscriptionLevel?.toUpperCase() === 'PRO';
+}
+
+// Polls until the condition holds. Resolves to false if it does not hold within the timeout.
+async function waitFor(condition: () => boolean, timeout = FILTER_TIMEOUT) {
+  const deadline = Date.now() + timeout;
+  while (!condition()) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await sleep(100);
+  }
+  return true;
 }
 
 export async function initializeDetailsWindow(): Promise<boolean> {
@@ -57,7 +76,9 @@ export async function openTickerDetails(ticker: string, exchange: string) {
       changeTileCommand(tiles[1] as HTMLElement, `CXPO ${fullTicker}`),
     ]);
 
-    await injectCXOSFilter(tiles[0] as HTMLElement, ticker, exchange);
+    if (hasCxosFilters()) {
+      await injectCXOSFilter(tiles[0] as HTMLElement, ticker, exchange);
+    }
 
     if (!alreadyOpen) {
       const header = _$(detailWindow, C.Window.header);
@@ -73,15 +94,19 @@ export async function openTickerDetails(ticker: string, exchange: string) {
  * and filters for the target ticker and exchange.
  */
 async function injectCXOSFilter(tile: HTMLElement, ticker: string, exchange: string) {
-  await watchUntil(() => {
-    return (
+  const ready = await waitFor(
+    () =>
       tile.getElementsByTagName('table').length > 0 ||
-      includesText(tile, L.ComExOrdersPanel.filter.types())
-    );
-  });
+      includesText(tile, L.ComExOrdersPanel.filter.types()),
+  );
+  if (!ready) {
+    return;
+  }
 
-  await toggleFilledFilter(tile);
-  await filterByExchange(tile, exchange);
+  // Stop if the filter sections are not rendered.
+  if (!(await toggleFilledFilter(tile)) || !(await filterByExchange(tile, exchange))) {
+    return;
+  }
 
   // Clear previous tickers to prevent filter accumulation
   const clearBtn = Array.from(tile.querySelectorAll('button')).find(el =>
@@ -96,7 +121,7 @@ async function injectCXOSFilter(tile: HTMLElement, ticker: string, exchange: str
   let filterInput: HTMLInputElement | undefined;
 
   // Locate the native search/filter input
-  await watchUntil(() => {
+  const found = await waitFor(() => {
     const inputs = Array.from(tile.getElementsByTagName('input'));
     filterInput = inputs.find(
       i =>
@@ -117,7 +142,7 @@ async function injectCXOSFilter(tile: HTMLElement, ticker: string, exchange: str
     return false;
   });
 
-  if (filterInput) {
+  if (found && filterInput) {
     focusElement(filterInput);
     changeInputValue(filterInput, ticker);
     filterInput.dispatchEvent(
@@ -130,7 +155,9 @@ async function injectCXOSFilter(tile: HTMLElement, ticker: string, exchange: str
  * Specifically finds the 'filled' status toggle and disables it if active.
  */
 async function toggleFilledFilter(tile: HTMLElement) {
-  await watchUntil(() => includesText(tile, L.ComExOrdersPanel.filter.statuses()));
+  if (!(await waitFor(() => includesText(tile, L.ComExOrdersPanel.filter.statuses())))) {
+    return false;
+  }
 
   const containers = Array.from(tile.querySelectorAll(`.${C.RadioItem.container}`));
   const filledContainer = containers.find(
@@ -145,6 +172,8 @@ async function toggleFilledFilter(tile: HTMLElement) {
       await sleep(150);
     }
   }
+
+  return true;
 }
 
 /**
@@ -152,7 +181,9 @@ async function toggleFilledFilter(tile: HTMLElement) {
  * in the "Exchanges" filter section, and ensuring the target is active.
  */
 async function filterByExchange(tile: HTMLElement, exchange: string) {
-  await watchUntil(() => includesText(tile, L.ComExOrdersPanel.filter.exchanges()));
+  if (!(await waitFor(() => includesText(tile, L.ComExOrdersPanel.filter.exchanges())))) {
+    return false;
+  }
 
   const containers = Array.from(tile.querySelectorAll(`.${C.RadioItem.container}`));
   const target = exchange.toUpperCase();
@@ -172,6 +203,8 @@ async function filterByExchange(tile: HTMLElement, exchange: string) {
       await sleep(50);
     }
   }
+
+  return true;
 }
 
 async function splitTileHorizontal(tile: HTMLElement): Promise<boolean> {
