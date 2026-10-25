@@ -8,7 +8,8 @@ import { getPrunId } from '@src/infrastructure/prun-ui/attributes';
 import { setBufferSize } from '@src/infrastructure/prun-ui/buffers';
 import { sleep } from '@src/utils/sleep';
 import { C } from '@src/infrastructure/prun-ui/prun-css';
-import { openTickerDetails } from '@src/features/XIT/CXOS/multi-buffer';
+import { openTickerDetails, hasCxosFilters } from '@src/features/XIT/CXOS/multi-buffer';
+import { userData } from '@src/store/user-data';
 import { storagesStore } from '@src/infrastructure/prun-api/data/storage';
 import { materialCategoriesStore } from '@src/infrastructure/prun-api/data/material-categories';
 import { calcMaterialAmountPrice } from '@src/infrastructure/fio/cx';
@@ -60,7 +61,14 @@ const quickTicker = ref('');
 const quickExchange = ref('CI1');
 
 // Filters & Selections
-const filterExchange = ref<string>('CI1');
+// The exchange, category and search filters are a PRO feature in the native CXOS.
+const hasFilters = computed(() => hasCxosFilters());
+const filterExchange = computed({
+  get: () => (hasFilters.value ? userData.settings.cxosExchange : 'ALL'),
+  set: (x: string) => {
+    userData.settings.cxosExchange = x as UserData.Exchange | 'ALL';
+  },
+});
 const filterCategory = ref<string>('ALL');
 const stockSearchQuery = ref('');
 const valueMode = ref<'total' | 'inStock'>('total');
@@ -612,29 +620,31 @@ onMounted(async () => {
     </div>
 
     <div v-else-if="currentMode === 'stock'" :class="$style.controls">
-      <span>CX: </span>
-      <select v-model="filterExchange" :class="[$style.customSelect, $style.exchangeSelect]">
-        <option value="ALL">ALL</option>
-        <option value="CI1">CI1</option>
-        <option value="NC1">NC1</option>
-        <option value="AI1">AI1</option>
-        <option value="IC1">IC1</option>
-        <option value="CI2">CI2</option>
-        <option value="NC2">NC2</option>
-      </select>
-      <span>Category: </span>
-      <select v-model="filterCategory" :class="[$style.customSelect, $style.categorySelect]">
-        <option value="ALL">ALL</option>
-        <option v-for="category in categoryOptions" :key="category.id" :value="category.id">
-          {{ category.name }}
-        </option>
-      </select>
-      <span>Search: </span>
-      <input
-        v-model="stockSearchQuery"
-        type="text"
-        :class="$style.customInput"
-        style="width: 45px; text-transform: uppercase" />
+      <template v-if="hasFilters">
+        <span>CX: </span>
+        <select v-model="filterExchange" :class="[$style.customSelect, $style.exchangeSelect]">
+          <option value="ALL">ALL</option>
+          <option value="CI1">CI1</option>
+          <option value="NC1">NC1</option>
+          <option value="AI1">AI1</option>
+          <option value="IC1">IC1</option>
+          <option value="CI2">CI2</option>
+          <option value="NC2">NC2</option>
+        </select>
+        <span>Category: </span>
+        <select v-model="filterCategory" :class="[$style.customSelect, $style.categorySelect]">
+          <option value="ALL">ALL</option>
+          <option v-for="category in categoryOptions" :key="category.id" :value="category.id">
+            {{ category.name }}
+          </option>
+        </select>
+        <span>Search: </span>
+        <input
+          v-model="stockSearchQuery"
+          type="text"
+          :class="$style.customInput"
+          style="width: 45px; text-transform: uppercase" />
+      </template>
       <div style="flex-grow: 1" />
       <span>Value: </span>
       <button
